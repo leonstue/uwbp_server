@@ -1,0 +1,43 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "linux-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/external/vcpkg/scripts/buildsystems/vcpkg.cmake"
+      }
+    },
+    {
+      "name": "wsl-arm64-debug",
+      "displayName": "WSL arm64 Debug",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "arm64-linux"
+      }
+    },
+    {
+      "name": "pi-arm64-debug",
+      "displayName": "Pi arm64 Debug",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "arm64-linux"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "wsl-arm64-debug",
+      "configurePreset": "wsl-arm64-debug"
+    },
+    {
+      "name": "pi-arm64-debug",
+      "configurePreset": "pi-arm64-debug"
+    }
+  ]
+}
