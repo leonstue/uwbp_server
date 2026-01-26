@@ -1,41 +1,77 @@
-# Prerequisites
-*.d
+# -------------------------
+# CMake / Build outputs
+# -------------------------
+out/
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+*.ninja
+.ninja_*
+Testing/
+CTestTestfile.cmake
+install_manifest.txt
 
-# Compiled Object files
-*.slo
-*.lo
-*.o
-*.obj
+# (optional) if you use your own build dir name
+.build/
+.build_*/
 
-# Precompiled Headers
-*.gch
-*.pch
+# -------------------------
+# vcpkg
+# -------------------------
+# If vcpkg is a submodule in external/vcpkg:
+# keep the submodule itself tracked, but ignore its build caches.
+external/vcpkg/buildtrees/
+external/vcpkg/packages/
+external/vcpkg/downloads/
+external/vcpkg/installed/
+external/vcpkg/vcpkg_installed/
 
-# Linker files
-*.ilk
+# Manifest-mode install dir created in your build tree
+**/vcpkg_installed/
 
-# Debugger Files
-*.pdb
+# If you ever use classic mode and create this:
+vcpkg_installed/
 
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
+# -------------------------
+# VS Code (keep workspace settings, ignore local clutter)
+# -------------------------
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/c_cpp_properties.json
 
-# Fortran module files
-*.mod
-*.smod
+# cpptools / clangd caches
+.vscode/ipch/
+.cache/
 
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
+# -------------------------
+# OS / Editor junk
+# -------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+*.tmp
+*.bak
 
-# Executables
-*.exe
-*.out
-*.app
+# -------------------------
+# Logs
+# -------------------------
+*.log
 
-# debug information files
-*.dwo
+# -------------------------
+# Python cache (if you keep tools in repo)
+# -------------------------
+__pycache__/
+*.pyc
+
+# -------------------------
+# Your run-on-save state (if you use it)
+# -------------------------
+.build/.on_save/
