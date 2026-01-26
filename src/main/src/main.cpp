@@ -2,8 +2,8 @@
 #include <Poco/Util/ServerApplication.h>
 #include <iostream>
 
-
-int main() {
-std::cout << "uwbp_server boot\n";
-return 0;
+int main()
+{
+    std::cout << "uwbp_server boot. yay" << std::endl;
+    return 0;
 }
