@@ -33,13 +33,13 @@ namespace uwbp::net
             nm = sdbus::createProxy(*connection,
                                     sdbus::ServiceName{NM_SERVICE},
                                     sdbus::ObjectPath{NM_PATH});
-            nm->finishRegistration();
+            // sdbus-c++ v2: kein finishRegistration() noetig
         }
 
         std::uint32_t getState() const
         {
             // Property "State" auf org.freedesktop.NetworkManager
-            return nm->getProperty("State").onInterface(NM_IFACE);
+            return nm->getProperty("State").onInterface(NM_IFACE).get<std::uint32_t>();
         }
 
         std::vector<sdbus::ObjectPath> getDevices() const
@@ -56,14 +56,12 @@ namespace uwbp::net
             auto dev = sdbus::createProxy(*connection,
                                           sdbus::ServiceName{NM_SERVICE},
                                           devPath);
-            dev->finishRegistration();
-
             NmDeviceInfo info;
             info.objectPath = std::string(devPath);
 
-            info.iface = dev->getProperty("Interface").onInterface(NM_DEV_IFACE);
-            info.deviceType = dev->getProperty("DeviceType").onInterface(NM_DEV_IFACE);
-            info.state = dev->getProperty("State").onInterface(NM_DEV_IFACE);
+            info.iface = dev->getProperty("Interface").onInterface(NM_DEV_IFACE).get<std::string>();
+            info.deviceType = dev->getProperty("DeviceType").onInterface(NM_DEV_IFACE).get<std::uint32_t>();
+            info.state = dev->getProperty("State").onInterface(NM_DEV_IFACE).get<std::uint32_t>();
 
             return info;
         }
@@ -154,7 +152,6 @@ namespace uwbp::net
                 auto connProxy = sdbus::createProxy(*connection,
                                                      sdbus::ServiceName{NM_SERVICE},
                                                      sdbus::ObjectPath{connPath});
-                connProxy->finishRegistration();
                 connProxy->callMethod("Delete")
                     .onInterface(NM_SETTINGS_CONN_IFACE);
             }

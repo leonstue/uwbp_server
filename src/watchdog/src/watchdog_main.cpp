@@ -56,8 +56,6 @@ static void cleanupConnections(const std::vector<ApEntry>& entries)
     auto nm   = sdbus::createProxy(*conn,
                                     sdbus::ServiceName{NM_SERVICE},
                                     sdbus::ObjectPath{NM_PATH});
-    nm->finishRegistration();
-
     for (const auto& e : entries)
     {
         // Deaktivieren
@@ -79,7 +77,6 @@ static void cleanupConnections(const std::vector<ApEntry>& entries)
             auto cp = sdbus::createProxy(*conn,
                                           sdbus::ServiceName{NM_SERVICE},
                                           sdbus::ObjectPath{e.connectionPath});
-            cp->finishRegistration();
             cp->callMethod("Delete").onInterface(NM_SETTINGS_CONN_IFACE);
             std::cerr << "[watchdog] deleted " << e.connectionPath << "\n";
         }
