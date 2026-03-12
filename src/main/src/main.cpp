@@ -1,12 +1,16 @@
 #include <csignal>
+#include <filesystem>
 #include <iostream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <spawn.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+extern char** environ;
 
 #include "NetworkManagerClient.h"
 #include "ApConfig.h"
@@ -28,19 +32,45 @@ static void writeState(const uwbp::common::StateFile& sf,
     sf.write(entries);
 }
 
+// Watchdog-Binary liegt im selben Verzeichnis wie uwbp_server
+static std::string getWatchdogPath()
+{
+    // /proc/self/exe -> absoluter Pfad der laufenden Binary
+    auto selfPath = std::filesystem::read_symlink("/proc/self/exe");
+    return (selfPath.parent_path() / "uwbp_watchdog").string();
+}
+
 static pid_t spawnWatchdog(const std::string& stateFilePath)
 {
-    pid_t myPid = getpid();
-    pid_t child = fork();
-    if (child == 0)
+    std::string wdPath = getWatchdogPath();
+    std::string pidStr = std::to_string(getpid());
+
+    // posix_spawn statt fork(): erbt keine D-Bus File-Descriptors,
+    // verhindert Probleme wenn exec fehlschlaegt.
+    posix_spawn_file_actions_t fileActions;
+    posix_spawn_file_actions_init(&fileActions);
+
+    posix_spawnattr_t attr;
+    posix_spawnattr_init(&attr);
+
+    char* argv[] = {
+        const_cast<char*>("uwbp_watchdog"),
+        const_cast<char*>(pidStr.c_str()),
+        const_cast<char*>(stateFilePath.c_str()),
+        nullptr
+    };
+
+    pid_t child = -1;
+    int err = posix_spawn(&child, wdPath.c_str(), &fileActions, &attr, argv, environ);
+
+    posix_spawnattr_destroy(&attr);
+    posix_spawn_file_actions_destroy(&fileActions);
+
+    if (err != 0)
     {
-        // Kind-Prozess: Watchdog ausfuehren
-        std::string pidStr = std::to_string(myPid);
-        execl("./uwbp_watchdog", "uwbp_watchdog",
-              pidStr.c_str(), stateFilePath.c_str(), nullptr);
-        // Falls execl fehlschlaegt
-        std::cerr << "Failed to exec watchdog\n";
-        _exit(1);
+        std::cerr << "Failed to spawn watchdog: " << wdPath
+                  << " (" << strerror(err) << ")\n";
+        return -1;
     }
     return child;
 }
