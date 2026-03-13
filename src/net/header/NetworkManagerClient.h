@@ -49,6 +49,10 @@ public:
     // exposed for state file serialization
     const std::vector<NmActiveAp>& activeAps() const;
 
+    // set the system hostname via systemd-hostnamed dbus.
+    // avahi will then broadcast it as <hostname>.local
+    static void setHostname(const std::string& hostname);
+
 private:
     // pimpl to keep sdbus out of the header
     struct Impl;

@@ -1,8 +1,12 @@
+#include <chrono>
 #include <csignal>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -20,6 +24,28 @@ static volatile sig_atomic_t g_running = 1;
 extern "C" void handleSignal(int)
 {
     g_running = 0;
+}
+
+// ---- simple file logger (standalone, doesnt link against common module) ----
+
+static std::ofstream g_logFile;
+
+static void logMsg(const std::string& level, const std::string& msg)
+{
+    auto now = std::chrono::system_clock::now();
+    auto time = std::chrono::system_clock::to_time_t(now);
+
+    std::ostringstream ss;
+    ss << std::put_time(std::localtime(&time), "%Y-%m-%d %H:%M:%S")
+       << " [" << level << "] " << msg;
+
+    std::cerr << "[watchdog] " << msg << "\n";
+
+    if (g_logFile.is_open())
+    {
+        g_logFile << ss.str() << "\n";
+        g_logFile.flush();
+    }
 }
 
 // ---- NM constants (standalone, doesnt link against the net module) ----
@@ -64,11 +90,11 @@ static void cleanupConnections(const std::vector<ApEntry>& entries)
             nm->callMethod("DeactivateConnection")
                 .onInterface(NM_IFACE)
                 .withArguments(sdbus::ObjectPath{e.activeConnectionPath});
-            std::cerr << "[watchdog] deactivated " << e.activeConnectionPath << "\n";
+            logMsg("INFO", "deactivated " + e.activeConnectionPath);
         }
         catch (const sdbus::Error& ex)
         {
-            std::cerr << "[watchdog] deactivate failed: " << ex.what() << "\n";
+            logMsg("ERROR", std::string("deactivate failed: ") + ex.what());
         }
 
         // delete settings
@@ -78,11 +104,11 @@ static void cleanupConnections(const std::vector<ApEntry>& entries)
                                           sdbus::ServiceName{NM_SERVICE},
                                           sdbus::ObjectPath{e.connectionPath});
             cp->callMethod("Delete").onInterface(NM_SETTINGS_CONN_IFACE);
-            std::cerr << "[watchdog] deleted " << e.connectionPath << "\n";
+            logMsg("INFO", "deleted " + e.connectionPath);
         }
         catch (const sdbus::Error& ex)
         {
-            std::cerr << "[watchdog] delete failed: " << ex.what() << "\n";
+            logMsg("ERROR", std::string("delete failed: ") + ex.what());
         }
     }
 }
@@ -96,12 +122,20 @@ int main(int argc, char* argv[])
 {
     if (argc < 3)
     {
-        std::cerr << "Usage: uwbp_watchdog <server_pid> <state_file_path>\n";
+        std::cerr << "Usage: uwbp_watchdog <server_pid> <state_file_path> [log_dir]\n";
         return 1;
     }
 
     pid_t serverPid           = static_cast<pid_t>(std::stol(argv[1]));
     std::string stateFilePath = argv[2];
+
+    // open log file if log dir was passed
+    if (argc >= 4)
+    {
+        std::string logDir = argv[3];
+        std::filesystem::create_directories(logDir);
+        g_logFile.open(logDir + "/watchdog.log", std::ios::app);
+    }
 
     struct sigaction sa{};
     sa.sa_handler = handleSignal;
@@ -109,16 +143,16 @@ int main(int argc, char* argv[])
     sigaction(SIGTERM, &sa, nullptr);
     sigaction(SIGINT, &sa, nullptr);
 
-    std::cerr << "[watchdog] monitoring PID " << serverPid
-              << ", state file: " << stateFilePath << "\n";
+    logMsg("INFO", "monitoring PID " + std::to_string(serverPid)
+                   + ", state file: " + stateFilePath);
 
     // poll every ~2s, check if the server is still alive
     while (g_running)
     {
         if (!processAlive(serverPid))
         {
-            std::cerr << "[watchdog] server PID " << serverPid
-                      << " is gone. Cleaning up...\n";
+            logMsg("INFO", "server PID " + std::to_string(serverPid)
+                           + " is gone. Cleaning up...");
 
             auto entries = readStateFile(stateFilePath);
             if (!entries.empty())
@@ -127,7 +161,7 @@ int main(int argc, char* argv[])
                 std::filesystem::remove(stateFilePath);
             }
 
-            std::cerr << "[watchdog] cleanup complete. Exiting.\n";
+            logMsg("INFO", "cleanup complete. Exiting.");
             return 0;
         }
 
@@ -136,6 +170,6 @@ int main(int argc, char* argv[])
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    std::cerr << "[watchdog] received signal, shutting down.\n";
+    logMsg("INFO", "received signal, shutting down.");
     return 0;
 }

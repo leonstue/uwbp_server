@@ -231,4 +231,22 @@ namespace uwbp::net
         return impl_->activeAps;
     }
 
+    void NetworkManagerClient::setHostname(const std::string& hostname)
+    {
+        auto conn = sdbus::createSystemBusConnection();
+        auto proxy = sdbus::createProxy(*conn,
+                                         sdbus::ServiceName{"org.freedesktop.hostname1"},
+                                         sdbus::ObjectPath{"/org/freedesktop/hostname1"});
+
+        // SetStaticHostname(hostname, interactive)
+        // interactive=false means it wont pop up a polkit dialog
+        proxy->callMethod("SetStaticHostname")
+            .onInterface("org.freedesktop.hostname1")
+            .withArguments(hostname, false);
+
+        proxy->callMethod("SetPrettyHostname")
+            .onInterface("org.freedesktop.hostname1")
+            .withArguments(hostname, false);
+    }
+
 } // namespace uwbp::net

@@ -16,6 +16,7 @@ extern char** environ;
 #include "NetworkManagerClient.h"
 #include "ApConfig.h"
 #include "StateFile.h"
+#include "Logger.h"
 #include "HttpServer.h"
 #include "RestRouter.h"
 #include "RestController.hpp"
@@ -35,16 +36,16 @@ static void writeState(const uwbp::common::StateFile& sf,
     sf.write(entries);
 }
 
-// resolve watchdog binary path relative to our own executable
-static std::string getWatchdogPath()
+// resolve path relative to our own binary
+static std::filesystem::path getExeDir()
 {
-    auto selfPath = std::filesystem::read_symlink("/proc/self/exe");
-    return (selfPath.parent_path() / "uwbp_watchdog").string();
+    return std::filesystem::read_symlink("/proc/self/exe").parent_path();
 }
 
-static pid_t spawnWatchdog(const std::string& stateFilePath)
+static pid_t spawnWatchdog(const std::string& stateFilePath,
+                           const std::string& logDir)
 {
-    std::string wdPath = getWatchdogPath();
+    std::string wdPath = (getExeDir() / "uwbp_watchdog").string();
     std::string pidStr = std::to_string(getpid());
 
     // using posix_spawn instead of fork() here because fork duplicates
@@ -60,6 +61,7 @@ static pid_t spawnWatchdog(const std::string& stateFilePath)
         const_cast<char*>("uwbp_watchdog"),
         const_cast<char*>(pidStr.c_str()),
         const_cast<char*>(stateFilePath.c_str()),
+        const_cast<char*>(logDir.c_str()),
         nullptr
     };
 
@@ -86,43 +88,52 @@ int main()
     sigaction(SIGTERM, &sa, nullptr);
     sigaction(SIGINT, &sa, nullptr);
 
+    // log dir next to the binary
+    std::string logDir = (getExeDir() / "logs").string();
+    uwbp::common::Logger log(logDir + "/server.log");
+
     try
     {
         uwbp::net::NetworkManagerClient nmc;
         uwbp::common::StateFile stateFile(STATE_FILE_PATH);
 
+        // set hostname so avahi broadcasts uwbp.local
+        uwbp::net::NetworkManagerClient::setHostname("uwbp");
+        log.info("Hostname set to 'uwbp' (reachable at uwbp.local)");
+
         // single AP for both ESPs and the user frontend
         uwbp::net::ApConfig apCfg;
         apCfg.ssid    = "UWBP";
-        apCfg.psk     = "uwbp-secret-psk"; // TODO: load from config file
+        apCfg.psk     = "abcd1234"; // TODO: load from config file
         apCfg.iface   = "wlan0";
         apCfg.band    = "bg";
         apCfg.channel = 6;
         apCfg.hidden  = false;
 
-        std::cout << "Creating AP '" << apCfg.ssid << "'...\n";
+        log.info("Creating AP '" + apCfg.ssid + "'...");
         auto ap = nmc.createAp(apCfg);
-        std::cout << "  active: " << ap.activeConnectionPath << "\n";
+        log.info("  active: " + ap.activeConnectionPath);
 
         // persist state so watchdog can cleanup if we crash
         writeState(stateFile, nmc);
 
-        pid_t wdPid = spawnWatchdog(stateFile.path());
-        std::cout << "Watchdog spawned (PID " << wdPid << ")\n";
+        pid_t wdPid = spawnWatchdog(stateFile.path(), logDir);
+        log.info("Watchdog spawned (PID " + std::to_string(wdPid) + ")");
 
         // ---- http server ----
         uwbp::server::RestRouter router;
-        uwbp::server::registerRoutes(router);
+        uwbp::server::registerRoutes(router, &g_running);
 
         uwbp::server::HttpServer httpServer(router, 8080);
         httpServer.start();
+        log.info("HTTP server listening on port 8080");
 
-        std::cout << "uwbp_server running. Ctrl+C to stop.\n";
+        log.info("uwbp_server running. Ctrl+C to stop.");
         while (g_running)
             pause();
 
         // ---- shutdown ----
-        std::cout << "\nShutting down...\n";
+        log.info("Shutting down...");
         httpServer.stop();
         nmc.removeAllAps();
         stateFile.remove();
@@ -133,11 +144,11 @@ int main()
             waitpid(wdPid, nullptr, 0);
         }
 
-        std::cout << "Goodbye.\n";
+        log.info("Goodbye.");
     }
     catch (const std::exception& ex)
     {
-        std::cerr << "Fatal: " << ex.what() << "\n";
+        log.error(std::string("Fatal: ") + ex.what());
         return 1;
     }
 
