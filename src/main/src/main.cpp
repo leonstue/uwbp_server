@@ -22,7 +22,6 @@ static volatile sig_atomic_t g_running = 1;
 extern "C" void onSignal(int) { g_running = 0; }
 
 static constexpr const char* STATE_FILE_PATH = "/tmp/uwbp_state";
-// Produktion: "/run/uwbp/state" (braucht /run/uwbp Verzeichnis)
 
 static void writeState(const uwbp::common::StateFile& sf,
                        const uwbp::net::NetworkManagerClient& nmc)
@@ -33,10 +32,9 @@ static void writeState(const uwbp::common::StateFile& sf,
     sf.write(entries);
 }
 
-// Watchdog-Binary liegt im selben Verzeichnis wie uwbp_server
+// resolve watchdog binary path relative to our own executable
 static std::string getWatchdogPath()
 {
-    // /proc/self/exe -> absoluter Pfad der laufenden Binary
     auto selfPath = std::filesystem::read_symlink("/proc/self/exe");
     return (selfPath.parent_path() / "uwbp_watchdog").string();
 }
@@ -46,8 +44,9 @@ static pid_t spawnWatchdog(const std::string& stateFilePath)
     std::string wdPath = getWatchdogPath();
     std::string pidStr = std::to_string(getpid());
 
-    // posix_spawn statt fork(): erbt keine D-Bus File-Descriptors,
-    // verhindert Probleme wenn exec fehlschlaegt.
+    // using posix_spawn instead of fork() here because fork duplicates
+    // the dbus file descriptors which messes with NetworkManager
+    // when the child process exits
     posix_spawn_file_actions_t fileActions;
     posix_spawn_file_actions_init(&fileActions);
 
@@ -78,7 +77,6 @@ static pid_t spawnWatchdog(const std::string& stateFilePath)
 
 int main()
 {
-    // Signal-Handler
     struct sigaction sa{};
     sa.sa_handler = onSignal;
     sigemptyset(&sa.sa_mask);
@@ -90,10 +88,10 @@ int main()
         uwbp::net::NetworkManagerClient nmc;
         uwbp::common::StateFile stateFile(STATE_FILE_PATH);
 
-        // Ein AP fuer ESPs und User-Frontend gemeinsam
+        // single AP for both ESPs and the user frontend
         uwbp::net::ApConfig apCfg;
         apCfg.ssid    = "UWBP";
-        apCfg.psk     = "uwbp-secret-psk"; // TODO: aus Config-File laden
+        apCfg.psk     = "uwbp-secret-psk"; // TODO: load from config file
         apCfg.iface   = "wlan0";
         apCfg.band    = "bg";
         apCfg.channel = 6;
@@ -103,27 +101,25 @@ int main()
         auto ap = nmc.createAp(apCfg);
         std::cout << "  active: " << ap.activeConnectionPath << "\n";
 
-        // State-File schreiben (fuer Watchdog-Cleanup bei Crash)
+        // persist state so watchdog can cleanup if we crash
         writeState(stateFile, nmc);
 
-        // Watchdog spawnen
         pid_t wdPid = spawnWatchdog(stateFile.path());
         std::cout << "Watchdog spawned (PID " << wdPid << ")\n";
 
-        // ---- Server-Loop ----
+        // ---- server loop ----
         std::cout << "uwbp_server running. Ctrl+C to stop.\n";
         while (g_running)
         {
-            // TODO: Poco HTTP Server Event-Loop kommt hier hin
-            pause(); // Auf Signal warten
+            // TODO: poco http server goes here
+            pause();
         }
 
-        // ---- Sauberes Shutdown ----
+        // ---- shutdown ----
         std::cout << "\nShutting down...\n";
         nmc.removeAllAps();
         stateFile.remove();
 
-        // Watchdog beenden
         if (wdPid > 0)
         {
             kill(wdPid, SIGTERM);

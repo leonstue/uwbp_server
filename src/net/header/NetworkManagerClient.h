@@ -7,21 +7,21 @@
 namespace uwbp::net
 {
 
-struct ApConfig; // forward declaration
+struct ApConfig;
 
 struct NmDeviceInfo
 {
-    std::string objectPath;   // z.B. /org/freedesktop/NetworkManager/Devices/2
-    std::string iface;        // z.B. wlan0
-    std::uint32_t deviceType; // NM DeviceType (WiFi etc.)
-    std::uint32_t state;      // NM Device State
+    std::string objectPath;   // e.g. /org/freedesktop/NetworkManager/Devices/2
+    std::string iface;        // e.g. wlan0
+    std::uint32_t deviceType; // NM_DEVICE_TYPE enum
+    std::uint32_t state;
 };
 
-// Ergebnis von createAp -- wird fuer Cleanup benoetigt
+// returned by createAp, needed for cleanup later
 struct NmActiveAp
 {
-    std::string connectionPath;       // Settings-Connection Objekt-Pfad
-    std::string activeConnectionPath; // Active-Connection Objekt-Pfad
+    std::string connectionPath;       // settings connection obj path
+    std::string activeConnectionPath; // active conection obj path
 };
 
 class NetworkManagerClient
@@ -30,28 +30,27 @@ public:
     NetworkManagerClient();
     ~NetworkManagerClient();
 
-    std::uint32_t getState() const;                 // NetworkManager global State
-    std::vector<NmDeviceInfo> listDevices() const;  // alle Devices
+    std::uint32_t getState() const;
+    std::vector<NmDeviceInfo> listDevices() const;
 
-    // Convenience: findet device by Interface-Name (z.B. "wlan0"), wirft nicht
+    // find device by interface name, returns false if not found (doesnt throw)
     bool tryGetDeviceByIface(const std::string& iface, NmDeviceInfo& out) const;
 
-    // --- AP Management ---
+    // --- AP management ---
 
-    // Erstellt und aktiviert einen WiFi AP. Wirft std::runtime_error bei Fehler.
+    // creates and activates a wifi AP, throws on failure
     NmActiveAp createAp(const ApConfig& cfg);
 
-    // Deaktiviert und loescht einen AP. Safe bei bereits entferntem AP.
+    // deactivate + delete an AP. safe to call if already gone
     void removeAp(const NmActiveAp& ap);
 
-    // Entfernt alle via createAp erstellten APs.
     void removeAllAps();
 
-    // Liste der aktuell aktiven APs (fuer State-File Serialisierung).
+    // exposed for state file serialization
     const std::vector<NmActiveAp>& activeAps() const;
 
 private:
-    // PImpl-light: wir vermeiden das sdbus include hier (Header bleibt clean)
+    // pimpl to keep sdbus out of the header
     struct Impl;
     Impl* impl_;
 };

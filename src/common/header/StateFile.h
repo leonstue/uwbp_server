@@ -7,8 +7,9 @@
 namespace uwbp::common
 {
 
-// Schreibt/liest aktive AP-Connections in eine Textdatei.
-// Format: "<connectionPath>\t<activeConnectionPath>" pro Zeile.
+// persists active AP conections to a file so the watchdog
+// can clean them up if the server dies unexpectedly.
+// format: "<connectionPath>\t<activeConnectionPath>" per line
 class StateFile
 {
 public:

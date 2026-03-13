@@ -13,7 +13,7 @@
 
 #include <sdbus-c++/sdbus-c++.h>
 
-// ---- Signal-Handling ----
+// ---- signal handling ----
 
 static volatile sig_atomic_t g_running = 1;
 
@@ -22,7 +22,7 @@ extern "C" void handleSignal(int)
     g_running = 0;
 }
 
-// ---- NM-Konstanten (standalone, kein Link gegen net-Modul) ----
+// ---- NM constants (standalone, doesnt link against the net module) ----
 
 static constexpr const char* NM_SERVICE = "org.freedesktop.NetworkManager";
 static constexpr const char* NM_PATH    = "/org/freedesktop/NetworkManager";
@@ -58,7 +58,7 @@ static void cleanupConnections(const std::vector<ApEntry>& entries)
                                     sdbus::ObjectPath{NM_PATH});
     for (const auto& e : entries)
     {
-        // Deaktivieren
+        // deactivate
         try
         {
             nm->callMethod("DeactivateConnection")
@@ -71,7 +71,7 @@ static void cleanupConnections(const std::vector<ApEntry>& entries)
             std::cerr << "[watchdog] deactivate failed: " << ex.what() << "\n";
         }
 
-        // Settings loeschen
+        // delete settings
         try
         {
             auto cp = sdbus::createProxy(*conn,
@@ -103,7 +103,6 @@ int main(int argc, char* argv[])
     pid_t serverPid           = static_cast<pid_t>(std::stol(argv[1]));
     std::string stateFilePath = argv[2];
 
-    // Signal-Handler installieren
     struct sigaction sa{};
     sa.sa_handler = handleSignal;
     sigemptyset(&sa.sa_mask);
@@ -113,7 +112,7 @@ int main(int argc, char* argv[])
     std::cerr << "[watchdog] monitoring PID " << serverPid
               << ", state file: " << stateFilePath << "\n";
 
-    // Poll-Loop: alle 2 Sekunden pruefen
+    // poll every ~2s, check if the server is still alive
     while (g_running)
     {
         if (!processAlive(serverPid))
@@ -132,7 +131,7 @@ int main(int argc, char* argv[])
             return 0;
         }
 
-        // 2s Sleep in kleinen Schritten (fuer schnelle Signal-Reaktion)
+        // sleep in small chunks so we react to signals quickly
         for (int i = 0; i < 20 && g_running; ++i)
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }

@@ -17,6 +17,7 @@ namespace uwbp::net
     static constexpr const char *NM_SETTINGS_CONN_IFACE =
         "org.freedesktop.NetworkManager.Settings.Connection";
 
+    // NM connection settings are a{sa{sv}} - dict of section name -> dict of key -> variant
     using NmSettingsMap = std::map<std::string,
                                    std::map<std::string, sdbus::Variant>>;
 
@@ -28,17 +29,14 @@ namespace uwbp::net
 
         Impl()
         {
-            // System-Bus (NetworkManager ist System-Dienst)
             connection = sdbus::createSystemBusConnection();
             nm = sdbus::createProxy(*connection,
                                     sdbus::ServiceName{NM_SERVICE},
                                     sdbus::ObjectPath{NM_PATH});
-            // sdbus-c++ v2: kein finishRegistration() noetig
         }
 
         std::uint32_t getState() const
         {
-            // Property "State" auf org.freedesktop.NetworkManager
             return nm->getProperty("State").onInterface(NM_IFACE).get<std::uint32_t>();
         }
 
@@ -81,16 +79,14 @@ namespace uwbp::net
         {
             auto devicePath = findDevicePath(cfg.iface);
 
-            // Connection-Settings aufbauen: a{sa{sv}}
             NmSettingsMap settings;
 
-            // "connection" Sektion
+            // connection
             settings["connection"]["type"]        = sdbus::Variant{std::string{"802-11-wireless"}};
             settings["connection"]["autoconnect"] = sdbus::Variant{false};
             settings["connection"]["id"]          = sdbus::Variant{std::string{"uwbp-ap-" + cfg.ssid}};
 
-            // "802-11-wireless" Sektion
-            // SSID muss als ay (vector<uint8_t>) gesendet werden
+            // wireless - ssid has to be sent as byte array (dbus type ay)
             std::vector<std::uint8_t> ssidBytes(cfg.ssid.begin(), cfg.ssid.end());
             settings["802-11-wireless"]["ssid"]    = sdbus::Variant{ssidBytes};
             settings["802-11-wireless"]["mode"]    = sdbus::Variant{std::string{"ap"}};
@@ -98,20 +94,19 @@ namespace uwbp::net
             settings["802-11-wireless"]["channel"] = sdbus::Variant{cfg.channel};
             settings["802-11-wireless"]["hidden"]  = sdbus::Variant{cfg.hidden};
 
-            // "802-11-wireless-security" Sektion
+            // security
             settings["802-11-wireless-security"]["key-mgmt"] =
                 sdbus::Variant{std::string{"wpa-psk"}};
             settings["802-11-wireless-security"]["psk"] =
                 sdbus::Variant{cfg.psk};
 
-            // "ipv4" Sektion -- "shared" aktiviert dnsmasq DHCP + NAT
+            // "shared" makes NM spin up dnsmasq for DHCP + NAT
             settings["ipv4"]["method"] = sdbus::Variant{std::string{"shared"}};
 
-            // Options: persist=volatile (nicht auf Disk gespeichert)
+            // volatile = dont persist to disk, gone after deactivation
             std::map<std::string, sdbus::Variant> options;
             options["persist"] = sdbus::Variant{std::string{"volatile"}};
 
-            // AddAndActivateConnection2 aufrufen
             sdbus::ObjectPath connPath;
             sdbus::ObjectPath activeConnPath;
             std::map<std::string, sdbus::Variant> result;
@@ -141,7 +136,7 @@ namespace uwbp::net
             }
             catch (const sdbus::Error&)
             {
-                // Connection evtl. bereits weg -- ignorieren
+                // might already be gone, thats fine
             }
         }
 
@@ -157,7 +152,7 @@ namespace uwbp::net
             }
             catch (const sdbus::Error&)
             {
-                // Settings-Objekt evtl. bereits weg -- ignorieren
+                // same here, might already be gone
             }
         }
 
@@ -178,7 +173,7 @@ namespace uwbp::net
         }
     };
 
-    // --- Public API ---
+    // --- public api ---
 
     NetworkManagerClient::NetworkManagerClient()
         : impl_(new Impl())
