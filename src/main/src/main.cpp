@@ -16,6 +16,9 @@ extern char** environ;
 #include "NetworkManagerClient.h"
 #include "ApConfig.h"
 #include "StateFile.h"
+#include "HttpServer.h"
+#include "RestRouter.h"
+#include "RestController.hpp"
 
 static volatile sig_atomic_t g_running = 1;
 
@@ -107,16 +110,20 @@ int main()
         pid_t wdPid = spawnWatchdog(stateFile.path());
         std::cout << "Watchdog spawned (PID " << wdPid << ")\n";
 
-        // ---- server loop ----
+        // ---- http server ----
+        uwbp::server::RestRouter router;
+        uwbp::server::registerRoutes(router);
+
+        uwbp::server::HttpServer httpServer(router, 8080);
+        httpServer.start();
+
         std::cout << "uwbp_server running. Ctrl+C to stop.\n";
         while (g_running)
-        {
-            // TODO: poco http server goes here
             pause();
-        }
 
         // ---- shutdown ----
         std::cout << "\nShutting down...\n";
+        httpServer.stop();
         nmc.removeAllAps();
         stateFile.remove();
 

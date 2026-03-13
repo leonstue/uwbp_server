@@ -7,7 +7,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ---- Dependencies ----
 find_package(Threads REQUIRED)
-find_package(Poco REQUIRED COMPONENTS Net Util Foundation)
+find_package(Poco REQUIRED COMPONENTS Net Util Foundation JSON)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(Systemd REQUIRED IMPORTED_TARGET libsystemd)
 find_package(sdbus-c++ REQUIRED)
@@ -36,6 +36,7 @@ target_link_libraries(uwbp_server PRIVATE
   Poco::Net
   Poco::Util
   Poco::Foundation
+  Poco::JSON
   SDBusCpp::sdbus-c++
   PkgConfig::Systemd
 )
