@@ -4,9 +4,10 @@ namespace uwbp::server
 {
 
 void RestRouter::addRoute(const std::string& method, const std::string& path,
-                          RouteHandler handler)
+                          const std::string& description, RouteHandler handler)
 {
     routes_[method + " " + path] = std::move(handler);
+    routeInfos_.push_back({method, path, description});
 }
 
 RouteHandler RestRouter::getHandler(const std::string& method,
@@ -16,6 +17,11 @@ RouteHandler RestRouter::getHandler(const std::string& method,
     if (it != routes_.end())
         return it->second;
     return nullptr;
+}
+
+const std::vector<RouteInfo>& RestRouter::allRoutes() const
+{
+    return routeInfos_;
 }
 
 } // namespace uwbp::server
