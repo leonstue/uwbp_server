@@ -1,6 +1,7 @@
 #include <csignal>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <utility>
@@ -97,9 +98,15 @@ int main()
         uwbp::net::NetworkManagerClient nmc;
         uwbp::common::StateFile stateFile(STATE_FILE_PATH);
 
-        // set hostname so avahi broadcasts uwbp.local
-        uwbp::net::NetworkManagerClient::setHostname("uwbp");
-        log.info("Hostname set to 'uwbp' (reachable at uwbp.local)");
+        // tell dnsmasq to resolve "uwbp" to our AP ip.
+        // has to be written before the AP starts so dnsmasq picks it up.
+        {
+            std::filesystem::create_directories("/etc/NetworkManager/dnsmasq-shared.d");
+            std::ofstream dns("/etc/NetworkManager/dnsmasq-shared.d/uwbp.conf",
+                              std::ios::trunc);
+            dns << "address=/uwbp/10.42.0.1\n";
+        }
+        log.info("DNS alias 'uwbp' -> 10.42.0.1 configured");
 
         // single AP for both ESPs and the user frontend
         uwbp::net::ApConfig apCfg;
