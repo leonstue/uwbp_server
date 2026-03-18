@@ -34,9 +34,15 @@ void RestRequestHandler::handleRequest(Poco::Net::HTTPServerRequest& request,
 
     Poco::JSON::Object::Ptr jsonResponse;
 
-    auto handler = router_.getHandler(request.getMethod(), request.getURI());
+    std::map<std::string, std::string> pathParams;
+    auto handler = router_.getHandler(request.getMethod(), request.getURI(), pathParams);
+
     if (handler)
     {
+        // inject path params into the body so handlers can access them
+        for (const auto& [key, value] : pathParams)
+            jsonBody->set("_" + key, value); // prefixed with _ to avoid clashes
+
         jsonResponse = handler(request, jsonBody);
     }
     else

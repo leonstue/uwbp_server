@@ -30,6 +30,7 @@ target_include_directories(uwbp_server PRIVATE
   "${CMAKE_SOURCE_DIR}/src/server/ws/header"
   "${CMAKE_SOURCE_DIR}/src/net/header"
   "${CMAKE_SOURCE_DIR}/src/common/header"
+  "${CMAKE_SOURCE_DIR}/src/uwb/header"
 )
 
 target_link_libraries(uwbp_server PRIVATE

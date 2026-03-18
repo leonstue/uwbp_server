@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -21,6 +22,7 @@ extern char** environ;
 #include "HttpServer.h"
 #include "RestRouter.h"
 #include "RestController.hpp"
+#include "DeviceManager.hpp"
 
 static volatile sig_atomic_t g_running = 1;
 
@@ -128,8 +130,10 @@ int main()
         log.info("Watchdog spawned (PID " + std::to_string(wdPid) + ")");
 
         // ---- http server ----
+        auto deviceManager = std::make_shared<uwbp::uwb::DeviceManager>();
+
         uwbp::server::RestRouter router;
-        uwbp::server::registerRoutes(router, &g_running);
+        uwbp::server::registerRoutes(router, &g_running, deviceManager);
 
         uwbp::server::HttpServer httpServer(router, 8080);
         httpServer.start();

@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmake --build /mnt/c/Users/leon.stuempeley/Desktop/lf7/project/uwbp_server/out/build/wsl-arm64-debug)"
+    ]
+  }
+}
