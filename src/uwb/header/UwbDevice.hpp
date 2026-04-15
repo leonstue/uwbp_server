@@ -51,7 +51,6 @@ struct UwbDevice
     DeviceType type = DeviceType::Tag;
     std::string name;
     std::string color = "#FFFFFF";
-    bool isMaster = false;
     Vec3 position; // for anchors: known position, for tags: last computed
 
     Poco::JSON::Object::Ptr toJson() const
@@ -61,7 +60,6 @@ struct UwbDevice
         o->set("type", deviceTypeToString(type));
         o->set("name", name);
         o->set("color", color);
-        o->set("isMaster", isMaster);
         o->set("position", position.toJson());
         return Poco::JSON::Object::Ptr(o);
     }
@@ -72,19 +70,21 @@ struct RangingMeasurement
 {
     std::string anchorId;
     std::string tagId;
-    double distance; // meters
+    double distance; // meters (from SS-TWR)
+    std::uint64_t timestamp = 0; // millis, used for time-window grouping
 
     static RangingMeasurement fromJson(const Poco::JSON::Object::Ptr& o)
     {
         return {
             o->optValue<std::string>("anchorId", ""),
             o->optValue<std::string>("tagId", ""),
-            o->optValue("distance", 0.0)
+            o->optValue("distance", 0.0),
+            static_cast<std::uint64_t>(o->optValue<double>("timestamp", 0.0))
         };
     }
 };
 
-// a full ranging sweep from the master anchor
+// a ranging post from a single anchor (can contain multiple tag measurements)
 struct RangingFrame
 {
     std::uint64_t timestamp = 0;
@@ -102,7 +102,13 @@ struct RangingFrame
             for (std::size_t i = 0; i < arr->size(); ++i)
             {
                 auto m = arr->getObject(i);
-                if (m) f.measurements.push_back(RangingMeasurement::fromJson(m));
+                if (m)
+                {
+                    auto meas = RangingMeasurement::fromJson(m);
+                    // use frame timestamp if measurement doesnt have its own
+                    if (meas.timestamp == 0) meas.timestamp = f.timestamp;
+                    f.measurements.push_back(std::move(meas));
+                }
             }
         }
         return f;

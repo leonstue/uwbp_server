@@ -29,30 +29,6 @@ inline void registerAnchorRoutes(RestRouter& router,
             return Poco::JSON::Object::Ptr(res);
         });
 
-    router.addRoute("POST", "/api/anchors/master", "set the master anchor",
-        [dm](Poco::Net::HTTPServerRequest&, const Poco::JSON::Object::Ptr& body)
-        {
-            auto id = body->optValue<std::string>("id", "");
-            if (id.empty())
-                return errorJson("need 'id'");
-
-            if (!dm->setMasterAnchor(id))
-                return errorJson("anchor not found");
-
-            return okJson();
-        });
-
-    router.addRoute("GET", "/api/anchors/master", "get the current master anchor",
-        [dm](Poco::Net::HTTPServerRequest&, const Poco::JSON::Object::Ptr&)
-        {
-            auto masterId = dm->getMasterAnchorId();
-            if (!masterId)
-                return errorJson("no master anchor set");
-
-            auto dev = dm->getDevice(*masterId);
-            return dev->toJson();
-        });
-
     router.addRoute("PUT", "/api/anchors/{id}/position", "set anchor position in room",
         [dm](Poco::Net::HTTPServerRequest&, const Poco::JSON::Object::Ptr& body)
         {
@@ -70,8 +46,9 @@ inline void registerAnchorRoutes(RestRouter& router,
             return dev->toJson();
         });
 
-    // ranging data from the master anchor
-    router.addRoute("POST", "/api/ranging", "submit UWB ranging data from master anchor",
+    // each anchor posts its own measurements individually.
+    // server aggregates in a time window and trilaterates when enough data.
+    router.addRoute("POST", "/api/ranging", "submit UWB ranging data from an anchor",
         [dm](Poco::Net::HTTPServerRequest&, const Poco::JSON::Object::Ptr& body)
         {
             auto frame = uwbp::uwb::RangingFrame::fromJson(body);
@@ -79,7 +56,7 @@ inline void registerAnchorRoutes(RestRouter& router,
             if (frame.measurements.empty())
                 return errorJson("no measurements in frame");
 
-            auto positions = dm->ingestRangingFrame(frame);
+            auto positions = dm->ingestMeasurements(frame);
 
             auto arr = new Poco::JSON::Array();
             for (const auto& tp : positions)

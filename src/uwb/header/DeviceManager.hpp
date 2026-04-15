@@ -3,6 +3,7 @@
 #include "UwbDevice.hpp"
 #include "Trilateration.hpp"
 
+#include <chrono>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -15,12 +16,15 @@ namespace uwbp::uwb
 class DeviceManager
 {
 public:
+    // time window in ms - measurements older than this get discarded
+    static constexpr std::uint64_t AGGREGATION_WINDOW_MS = 100;
+
     // ---- device registration (called by ESP32s) ----
 
     bool registerDevice(const std::string& id, DeviceType type)
     {
         std::lock_guard lock(mutex_);
-        if (devices_.contains(id)) return false; // already registered
+        if (devices_.contains(id)) return false;
 
         UwbDevice dev;
         dev.id = id;
@@ -80,29 +84,6 @@ public:
         return true;
     }
 
-    bool setMasterAnchor(const std::string& anchorId)
-    {
-        std::lock_guard lock(mutex_);
-        auto it = devices_.find(anchorId);
-        if (it == devices_.end() || it->second.type != DeviceType::Anchor)
-            return false;
-
-        // clear old master
-        for (auto& [_, dev] : devices_)
-            dev.isMaster = false;
-
-        it->second.isMaster = true;
-        return true;
-    }
-
-    std::optional<std::string> getMasterAnchorId() const
-    {
-        std::lock_guard lock(mutex_);
-        for (const auto& [id, dev] : devices_)
-            if (dev.isMaster) return id;
-        return std::nullopt;
-    }
-
     bool setAnchorPosition(const std::string& anchorId, const Vec3& pos)
     {
         std::lock_guard lock(mutex_);
@@ -113,39 +94,82 @@ public:
         return true;
     }
 
-    // ---- ranging data ----
+    // ---- ranging data (each anchor posts individually) ----
 
-    // ingest a ranging frame and compute tag positions.
-    // returns computed positions for all tags that had enough data.
-    std::vector<TagPosition> ingestRangingFrame(const RangingFrame& frame)
+    // ingest measurements from a single anchor.
+    // adds to the sliding window buffer, then checks if we can
+    // trilaterate any tags (>= 3 different anchors within the time window).
+    std::vector<TagPosition> ingestMeasurements(const RangingFrame& frame)
     {
         std::lock_guard lock(mutex_);
 
-        // group measurements by tag
-        std::unordered_map<std::string, std::vector<AnchorDistance>> tagMeasurements;
+        auto now = frame.timestamp;
+        if (now == 0)
+        {
+            // fallback: use server time if anchor didnt send a timestamp
+            now = static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch()
+                ).count()
+            );
+        }
 
+        // add new measurements to the buffer
         for (const auto& m : frame.measurements)
         {
-            // check that the anchor exists and we know its position
+            // validate anchor + tag exist
             auto anchorIt = devices_.find(m.anchorId);
             if (anchorIt == devices_.end() || anchorIt->second.type != DeviceType::Anchor)
                 continue;
 
-            // check tag exists
             auto tagIt = devices_.find(m.tagId);
             if (tagIt == devices_.end() || tagIt->second.type != DeviceType::Tag)
                 continue;
 
-            tagMeasurements[m.tagId].push_back({
-                anchorIt->second.position,
-                m.distance
-            });
+            BufferedMeasurement bm;
+            bm.anchorId = m.anchorId;
+            bm.tagId = m.tagId;
+            bm.distance = m.distance;
+            bm.timestamp = (m.timestamp != 0) ? m.timestamp : now;
+
+            measurementBuffer_[m.tagId].push_back(std::move(bm));
         }
 
-        // trilaterate each tag
+        // now try to trilaterate each tag that has buffered data
         std::vector<TagPosition> results;
-        for (auto& [tagId, ads] : tagMeasurements)
+
+        for (auto& [tagId, buffer] : measurementBuffer_)
         {
+            // purge old measurements outside the window
+            auto cutoff = (now > AGGREGATION_WINDOW_MS) ? (now - AGGREGATION_WINDOW_MS) : 0;
+            std::erase_if(buffer, [cutoff](const BufferedMeasurement& bm) {
+                return bm.timestamp < cutoff;
+            });
+
+            if (buffer.empty()) continue;
+
+            // collect latest measurement per anchor (deduplicate)
+            std::unordered_map<std::string, BufferedMeasurement> latestPerAnchor;
+            for (const auto& bm : buffer)
+            {
+                auto it = latestPerAnchor.find(bm.anchorId);
+                if (it == latestPerAnchor.end() || bm.timestamp > it->second.timestamp)
+                    latestPerAnchor[bm.anchorId] = bm;
+            }
+
+            // need at least 3 different anchors
+            if (latestPerAnchor.size() < 3) continue;
+
+            // build anchor-distance pairs for trilateration
+            std::vector<AnchorDistance> ads;
+            for (const auto& [anchorId, bm] : latestPerAnchor)
+            {
+                auto anchorIt = devices_.find(anchorId);
+                if (anchorIt == devices_.end()) continue;
+
+                ads.push_back({anchorIt->second.position, bm.distance});
+            }
+
             if (ads.size() < 3) continue;
 
             auto solved = trilaterate(ads);
@@ -154,18 +178,20 @@ public:
             TagPosition tp;
             tp.tagId = tagId;
             tp.position = solved->first;
-            tp.timestamp = frame.timestamp;
+            tp.timestamp = now;
             tp.residual = solved->second;
 
-            // store in latest positions map
             latestPositions_[tagId] = tp;
 
-            // also update the device's position field
+            // update device position too
             auto devIt = devices_.find(tagId);
             if (devIt != devices_.end())
                 devIt->second.position = tp.position;
 
             results.push_back(std::move(tp));
+
+            // clear buffer for this tag after successful trilateration
+            buffer.clear();
         }
 
         return results;
@@ -190,9 +216,20 @@ public:
     }
 
 private:
+    struct BufferedMeasurement
+    {
+        std::string anchorId;
+        std::string tagId;
+        double distance;
+        std::uint64_t timestamp;
+    };
+
     mutable std::mutex mutex_;
     std::unordered_map<std::string, UwbDevice> devices_;
     std::unordered_map<std::string, TagPosition> latestPositions_;
+
+    // sliding window buffer: tagId -> list of recent measurements
+    std::unordered_map<std::string, std::vector<BufferedMeasurement>> measurementBuffer_;
 };
 
 } // namespace uwbp::uwb
