@@ -94,11 +94,24 @@ namespace uwbp::net
             settings["802-11-wireless"]["channel"] = sdbus::Variant{cfg.channel};
             settings["802-11-wireless"]["hidden"]  = sdbus::Variant{cfg.hidden};
 
-            // security
+            // security - force pure WPA2-PSK/CCMP, no WPA3/SAE, no PMF.
+            // ESP32 Arduino-Core cant handle WPA3-SAE or PMF and rejects the AP
+            // with NO_AP_FOUND_IN_AUTHMODE_THRESHOLD otherwise.
             settings["802-11-wireless-security"]["key-mgmt"] =
                 sdbus::Variant{std::string{"wpa-psk"}};
             settings["802-11-wireless-security"]["psk"] =
                 sdbus::Variant{cfg.psk};
+            // proto=rsn means WPA2 only (no WPA1)
+            settings["802-11-wireless-security"]["proto"] =
+                sdbus::Variant{std::vector<std::string>{"rsn"}};
+            // pairwise+group=ccmp forces AES, no TKIP
+            settings["802-11-wireless-security"]["pairwise"] =
+                sdbus::Variant{std::vector<std::string>{"ccmp"}};
+            settings["802-11-wireless-security"]["group"] =
+                sdbus::Variant{std::vector<std::string>{"ccmp"}};
+            // pmf: 0=default, 1=disable, 2=optional, 3=required
+            settings["802-11-wireless-security"]["pmf"] =
+                sdbus::Variant{std::int32_t{1}};
 
             // "shared" makes NM spin up dnsmasq for DHCP + NAT
             settings["ipv4"]["method"] = sdbus::Variant{std::string{"shared"}};
