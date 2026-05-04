@@ -5,8 +5,8 @@ After=dbus.service NetworkManager.service
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/uwbp/server/out/build/pi-arm64-debug
-ExecStart=/opt/uwbp/server/out/build/pi-arm64-debug/uwbp_server
+WorkingDirectory=/opt/uwbp/server
+ExecStart=/opt/uwbp/server/uwbp_server
 Restart=always
 RestartSec=5
 
