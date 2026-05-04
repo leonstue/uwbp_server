@@ -8,6 +8,7 @@ endif
 
 BUILD_DIR := out/build/$(PRESET)
 BINARY    := $(BUILD_DIR)/uwbp_server
+WATCHDOG  := $(BUILD_DIR)/uwbp_watchdog
 
 DEPLOY_DIR      := /opt/uwbp/server
 SERVICE_FILE    := deploy/uwbp-server.service
@@ -22,9 +23,9 @@ all: build
 
 help:
 	@echo "Available targets:"
-	@echo "  make deploy           - install deps, prepare submodules/vcpkg, build, deploy artifact, install service and start it"
-	@echo "  make clean            - stop/remove service, remove deployed artifact and remove local build/vcpkg artifacts"
-	@echo "  make clean-artifacts  - remove only deployed artifact from /opt; service stays registered and may fail until redeployed"
+	@echo "  make deploy           - install deps, prepare submodules/vcpkg, build, deploy artifacts, install service and start it"
+	@echo "  make clean            - stop/remove service, remove deployed artifacts and remove local build/vcpkg artifacts"
+	@echo "  make clean-artifacts  - remove only deployed artifacts from /opt; service stays registered and may fail until redeployed"
 	@echo "  make logs             - show recent logs of deployed backend service"
 	@echo ""
 	@echo "  make install-deps     - install required system packages"
@@ -33,7 +34,7 @@ help:
 	@echo "  make configure        - only run cmake configure"
 	@echo "  make build            - build for detected platform ($(PRESET))"
 	@echo "  make rebuild          - remove build dir for current preset and build again"
-	@echo "  make deploy-artifact  - copy backend binary to /opt/uwbp/server"
+	@echo "  make deploy-artifact  - copy backend artifacts to /opt/uwbp/server"
 	@echo "  make install-service  - install and enable systemd service"
 	@echo "  make start            - start/restart backend service now"
 	@echo "  make run              - build and run the server with sudo"
@@ -72,8 +73,10 @@ rebuild:
 deploy: install-deps submodules bootstrap-vcpkg build deploy-artifact install-service start
 
 deploy-artifact:
+	sudo rm -rf $(DEPLOY_DIR)
 	sudo mkdir -p $(DEPLOY_DIR)
 	sudo cp $(BINARY) $(DEPLOY_DIR)/uwbp_server
+	sudo cp $(WATCHDOG) $(DEPLOY_DIR)/uwbp_watchdog
 
 install-service:
 	sudo cp $(SERVICE_FILE) $(SYSTEMD_SERVICE)
