@@ -1,0 +1,16 @@
+[Unit]
+Description=UWBP Backend Server
+Wants=NetworkManager.service
+After=dbus.service NetworkManager.service
+
+[Service]
+Type=simple
+WorkingDirectory=__BACKEND_DIR__/out/build/pi-arm64-debug
+ExecStart=__BACKEND_DIR__/out/build/pi-arm64-debug/uwbp_server
+Restart=always
+RestartSec=5
+
+User=root
+
+[Install]
+WantedBy=multi-user.target
