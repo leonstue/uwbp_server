@@ -6,6 +6,7 @@ After=dbus.service NetworkManager.service
 [Service]
 Type=simple
 WorkingDirectory=/opt/uwbp/server
+ExecStartPre=/bin/bash -c 'if [ -d /opt/uwbp/server.next ]; then rm -rf /opt/uwbp/server && mv /opt/uwbp/server.next /opt/uwbp/server; fi'
 ExecStart=/opt/uwbp/server/uwbp_server
 Restart=always
 RestartSec=5

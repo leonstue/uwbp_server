@@ -11,6 +11,7 @@ BINARY    := $(BUILD_DIR)/uwbp_server
 WATCHDOG  := $(BUILD_DIR)/uwbp_watchdog
 
 DEPLOY_DIR      := /opt/uwbp/server
+STAGING_DIR     := /opt/uwbp/server.next
 SERVICE_FILE    := deploy/uwbp-server.service
 SYSTEMD_SERVICE := /etc/systemd/system/uwbp-server.service
 SERVICE_NAME    := uwbp-server.service
@@ -23,9 +24,10 @@ all: build
 
 help:
 	@echo "Available targets:"
-	@echo "  make deploy           - install deps, prepare submodules/vcpkg, build, deploy artifacts and install/enable service (service starts on next boot or via 'make start')"
-	@echo "  make clean            - stop/remove service, remove deployed artifacts and remove local build/vcpkg artifacts"
-	@echo "  make clean-artifacts  - remove only deployed artifacts from /opt; service stays registered and may fail until redeployed"
+	@echo "  make deploy           - build and stage new artifacts to $(STAGING_DIR). Running service is NOT touched."
+	@echo "                          New version goes live on next service start (reboot or 'make start')."
+	@echo "  make clean            - stop/remove service, remove deployed and staged artifacts and remove local build/vcpkg artifacts"
+	@echo "  make clean-artifacts  - remove only deployed and staged artifacts from /opt; service stays registered and may fail until redeployed"
 	@echo "  make logs             - show recent logs of deployed backend service"
 	@echo "  make clean-logs       - clear journalctl logs and file logs of deployed backend"
 	@echo ""
@@ -35,9 +37,9 @@ help:
 	@echo "  make configure        - only run cmake configure"
 	@echo "  make build            - build for detected platform ($(PRESET))"
 	@echo "  make rebuild          - remove build dir for current preset and build again"
-	@echo "  make deploy-artifact  - copy backend artifacts to /opt/uwbp/server"
+	@echo "  make deploy-artifact  - copy backend artifacts into staging dir $(STAGING_DIR)"
 	@echo "  make install-service  - install and enable systemd service"
-	@echo "  make start            - start/restart backend service now"
+	@echo "  make start            - start/restart backend service now (promotes staging if present)"
 	@echo "  make run              - build and run the server with sudo"
 	@echo "  make run-only         - run already built server with sudo"
 	@echo "  make wsl              - force WSL build"
@@ -74,10 +76,11 @@ rebuild:
 deploy: install-deps submodules bootstrap-vcpkg build deploy-artifact install-service
 
 deploy-artifact:
-	sudo rm -rf $(DEPLOY_DIR)
-	sudo mkdir -p $(DEPLOY_DIR)
-	sudo cp $(BINARY) $(DEPLOY_DIR)/uwbp_server
-	sudo cp $(WATCHDOG) $(DEPLOY_DIR)/uwbp_watchdog
+	sudo rm -rf $(STAGING_DIR)
+	sudo mkdir -p $(STAGING_DIR)
+	sudo cp $(BINARY) $(STAGING_DIR)/uwbp_server
+	sudo cp $(WATCHDOG) $(STAGING_DIR)/uwbp_watchdog
+	@echo "staged at $(STAGING_DIR) — wird beim nächsten Service-Start aktiv (Reboot oder 'make start')"
 
 install-service:
 	sudo cp $(SERVICE_FILE) $(SYSTEMD_SERVICE)
@@ -91,7 +94,7 @@ logs:
 	journalctl -u $(SERVICE_NAME) -n 50 --no-pager
 
 clean-artifacts:
-	sudo rm -rf $(DEPLOY_DIR)
+	sudo rm -rf $(DEPLOY_DIR) $(STAGING_DIR)
 
 clean-logs:
 	sudo rm -rf $(DEPLOY_DIR)/logs
@@ -103,7 +106,7 @@ clean:
 	sudo rm -f $(SYSTEMD_SERVICE)
 	sudo systemctl daemon-reload
 	sudo systemctl reset-failed
-	sudo rm -rf $(DEPLOY_DIR)
+	sudo rm -rf $(DEPLOY_DIR) $(STAGING_DIR)
 	rm -rf out
 	rm -rf external/vcpkg/buildtrees
 	rm -rf external/vcpkg/packages
