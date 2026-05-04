@@ -9,36 +9,45 @@ endif
 BUILD_DIR := out/build/$(PRESET)
 BINARY    := $(BUILD_DIR)/uwbp_server
 
-DEPLOY_DIR := /opt/uwbp/server
-SERVICE_FILE := deploy/uwbp-server.service
+DEPLOY_DIR      := /opt/uwbp/server
+SERVICE_FILE    := deploy/uwbp-server.service
 SYSTEMD_SERVICE := /etc/systemd/system/uwbp-server.service
+SERVICE_NAME    := uwbp-server.service
 
-.PHONY: all build configure rebuild clean run run-only help wsl pi install-deps submodules bootstrap-vcpkg deploy install-service
+.PHONY: all help install-deps submodules bootstrap-vcpkg configure build rebuild \
+        deploy deploy-artifact install-service start logs clean-artifacts clean \
+        run run-only wsl pi
 
 all: build
 
 help:
 	@echo "Available targets:"
-	@echo "  make install-deps      - install required system packages"
-	@echo "  make submodules        - initialize git submodules"
-	@echo "  make bootstrap-vcpkg   - bootstrap vcpkg"
-	@echo "  make build             - build for detected platform ($(PRESET))"
-	@echo "  make wsl               - force WSL build"
-	@echo "  make pi                - force Pi build"
-	@echo "  make configure         - only run cmake configure"
-	@echo "  make rebuild           - clean + build"
-	@echo "  make clean             - remove build dir"
-	@echo "  make deploy            - copy backend binary to /opt/uwbp/server"
-	@echo "  make install-service   - install and enable systemd service"
-	@echo "  make run               - run the server (with sudo, needed for NM + /etc)"
+	@echo "  make deploy           - install deps, prepare submodules/vcpkg, build, deploy artifact, install service and start it"
+	@echo "  make clean            - stop/remove service, remove deployed artifact and remove local build/vcpkg artifacts"
+	@echo "  make clean-artifacts  - remove only deployed artifact from /opt; service stays registered and may fail until redeployed"
+	@echo "  make logs             - show recent logs of deployed backend service"
+	@echo ""
+	@echo "  make install-deps     - install required system packages"
+	@echo "  make submodules       - initialize git submodules"
+	@echo "  make bootstrap-vcpkg  - bootstrap vcpkg if needed"
+	@echo "  make configure        - only run cmake configure"
+	@echo "  make build            - build for detected platform ($(PRESET))"
+	@echo "  make rebuild          - remove build dir for current preset and build again"
+	@echo "  make deploy-artifact  - copy backend binary to /opt/uwbp/server"
+	@echo "  make install-service  - install and enable systemd service"
+	@echo "  make start            - start/restart backend service now"
+	@echo "  make run              - build and run the server with sudo"
+	@echo "  make run-only         - run already built server with sudo"
+	@echo "  make wsl              - force WSL build"
+	@echo "  make pi               - force Pi build"
 	@echo ""
 	@echo "Current preset: $(PRESET)"
 	@echo "Build dir:      $(BUILD_DIR)"
 
 install-deps:
-	apt update
-	apt upgrade -y
-	apt install -y git build-essential cmake ninja-build
+	sudo apt update
+	sudo apt upgrade -y
+	sudo apt install -y git build-essential cmake ninja-build
 
 submodules:
 	git submodule update --init --recursive
@@ -56,10 +65,41 @@ configure:
 build: configure
 	cmake --build $(BUILD_DIR)
 
-rebuild: clean build
+rebuild:
+	rm -rf $(BUILD_DIR)
+	$(MAKE) build
+
+deploy: install-deps submodules bootstrap-vcpkg build deploy-artifact install-service start
+
+deploy-artifact:
+	sudo mkdir -p $(DEPLOY_DIR)
+	sudo cp $(BINARY) $(DEPLOY_DIR)/uwbp_server
+
+install-service:
+	sudo cp $(SERVICE_FILE) $(SYSTEMD_SERVICE)
+	sudo systemctl daemon-reload
+	sudo systemctl enable $(SERVICE_NAME)
+
+start:
+	sudo systemctl restart $(SERVICE_NAME)
+
+logs:
+	journalctl -u $(SERVICE_NAME) -n 50 --no-pager
+
+clean-artifacts:
+	sudo rm -rf $(DEPLOY_DIR)
 
 clean:
-	rm -rf $(BUILD_DIR)
+	sudo systemctl disable --now $(SERVICE_NAME) 2>/dev/null || true
+	sudo rm -f $(SYSTEMD_SERVICE)
+	sudo systemctl daemon-reload
+	sudo systemctl reset-failed
+	sudo rm -rf $(DEPLOY_DIR)
+	rm -rf out
+	rm -rf external/vcpkg/buildtrees
+	rm -rf external/vcpkg/packages
+	rm -rf external/vcpkg/downloads
+	rm -rf external/vcpkg/installed
 
 wsl:
 	$(MAKE) build PRESET=wsl-arm64-debug
@@ -67,20 +107,10 @@ wsl:
 pi:
 	$(MAKE) build PRESET=pi-arm64-debug
 
-deploy:
-	mkdir -p $(DEPLOY_DIR)
-	cp $(BINARY) $(DEPLOY_DIR)/uwbp_server
-
-install-service:
-	cp $(SERVICE_FILE) $(SYSTEMD_SERVICE)
-	systemctl daemon-reload
-	systemctl enable uwbp-server.service
-
 # server needs sudo because it talks to NetworkManager system bus
 # and writes to /etc/NetworkManager/dnsmasq-shared.d/
 run: build
 	cd $(BUILD_DIR) && sudo ./uwbp_server
 
-# run without rebuild
 run-only:
 	cd $(BUILD_DIR) && sudo ./uwbp_server
