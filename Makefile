@@ -23,7 +23,7 @@ all: build
 
 help:
 	@echo "Available targets:"
-	@echo "  make deploy           - install deps, prepare submodules/vcpkg, build, deploy artifacts, install service and start it"
+	@echo "  make deploy           - install deps, prepare submodules/vcpkg, build, deploy artifacts and install/enable service (service starts on next boot or via 'make start')"
 	@echo "  make clean            - stop/remove service, remove deployed artifacts and remove local build/vcpkg artifacts"
 	@echo "  make clean-artifacts  - remove only deployed artifacts from /opt; service stays registered and may fail until redeployed"
 	@echo "  make logs             - show recent logs of deployed backend service"
@@ -70,7 +70,7 @@ rebuild:
 	rm -rf $(BUILD_DIR)
 	$(MAKE) build
 
-deploy: install-deps submodules bootstrap-vcpkg build deploy-artifact install-service start
+deploy: install-deps submodules bootstrap-vcpkg build deploy-artifact install-service
 
 deploy-artifact:
 	sudo rm -rf $(DEPLOY_DIR)
