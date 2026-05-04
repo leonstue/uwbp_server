@@ -48,7 +48,7 @@ help:
 install-deps:
 	sudo apt update
 	sudo apt upgrade -y
-	sudo apt install -y git build-essential cmake ninja-build
+	sudo apt install -y git build-essential cmake ninja-build autoconf automake libtool pkg-config
 
 submodules:
 	git submodule update --init --recursive
