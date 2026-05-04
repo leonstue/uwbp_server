@@ -16,7 +16,7 @@ SYSTEMD_SERVICE := /etc/systemd/system/uwbp-server.service
 SERVICE_NAME    := uwbp-server.service
 
 .PHONY: all help install-deps submodules bootstrap-vcpkg configure build rebuild \
-        deploy deploy-artifact install-service start logs clean-artifacts clean \
+        deploy deploy-artifact install-service start logs clean-artifacts clean-logs clean \
         run run-only wsl pi
 
 all: build
@@ -27,6 +27,7 @@ help:
 	@echo "  make clean            - stop/remove service, remove deployed artifacts and remove local build/vcpkg artifacts"
 	@echo "  make clean-artifacts  - remove only deployed artifacts from /opt; service stays registered and may fail until redeployed"
 	@echo "  make logs             - show recent logs of deployed backend service"
+	@echo "  make clean-logs       - clear journalctl logs and file logs of deployed backend"
 	@echo ""
 	@echo "  make install-deps     - install required system packages"
 	@echo "  make submodules       - initialize git submodules"
@@ -91,6 +92,11 @@ logs:
 
 clean-artifacts:
 	sudo rm -rf $(DEPLOY_DIR)
+
+clean-logs:
+	sudo rm -rf $(DEPLOY_DIR)/logs
+	sudo journalctl --rotate
+	sudo journalctl --vacuum-time=1s --unit=$(SERVICE_NAME)
 
 clean:
 	sudo systemctl disable --now $(SERVICE_NAME) 2>/dev/null || true
