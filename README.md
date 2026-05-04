@@ -2,20 +2,20 @@
 
 Backend für das UWBP Indoor-Positioning-System.
 
-Das Projekt besteht aus zwei Teilen:
+Repos:
 
 - Backend: <https://github.com/leonstue/uwbp_server>
 - Frontend: <https://github.com/leonstue/uwbp_frontend>
 
-Das Backend läuft auf einem Raspberry Pi, stellt die API für Frontend und ESP32-Geräte bereit und verwaltet das WLAN für das UWBP-System. Zusätzlich wird ein Watchdog verwendet, der das Netzwerk beendet, wenn das Backend nicht mehr läuft.
+Das Backend stellt die API bereit, verwaltet das WLAN für die ESP32-Geräte und wird auf dem Raspberry Pi als systemd-Service gestartet.
 
-Das Frontend wird separat gebaut und deployed. Für den vollständigen Betrieb müssen Backend und Frontend eingerichtet sein.
+Das Frontend wird separat deployed und stellt das Dashboard bereit.
 
 ---
 
-## Voraussetzungen
+## Deploymentanleitung
 
-Backend- und Frontend-Projekt müssen bereits lokal auf dem Raspberry Pi vorhanden sein.
+Das Backend-Projekt muss bereits lokal auf dem Raspberry Pi vorhanden sein.
 
 In dieser README wird folgender Platzhalter verwendet:
 
@@ -23,140 +23,27 @@ In dieser README wird folgender Platzhalter verwendet:
 <BACKEND_DIR> = lokaler Pfad zum Backend-Projekt
 ```
 
-Das Backend wird nach dem Build als fertiges Artefakt unter folgendem Pfad deployed:
+Das Backend wird als fertiges Artefakt unter folgendem Pfad deployed:
 
 ```text
 /opt/uwbp/server
 ```
 
----
-
-## Systempakete installieren
-
-```bash
-sudo apt update
-sudo apt upgrade -y
-
-sudo apt install -y git build-essential cmake ninja-build
-```
-
-`git` wird benötigt, wenn das eingebundene `vcpkg`-Submodule initialisiert werden muss.
-
----
-
-## Backend-Submodules vorbereiten
-
-Das Backend verwendet `vcpkg` als Git-Submodule unter:
-
-```text
-<BACKEND_DIR>/external/vcpkg
-```
-
-Falls das Backend-Projekt über Git bereitgestellt wurde, muss das Submodule initialisiert werden:
+### Backend vollständig deployen
 
 ```bash
 cd <BACKEND_DIR>
-git submodule update --init --recursive
-```
 
-Alternativ muss das Verzeichnis `external/vcpkg` bereits vollständig im Backend-Projektverzeichnis vorhanden sein.
-
----
-
-## vcpkg vorbereiten
-
-```bash
-cd <BACKEND_DIR>
-./external/vcpkg/bootstrap-vcpkg.sh
-```
-
----
-
-## Backend bauen
-
-Die verfügbaren Make-Targets können angezeigt werden mit:
-
-```bash
-make help
-```
-
-Das Backend wird gebaut mit:
-
-```bash
+sudo make install-deps
+make submodules
+make bootstrap-vcpkg
 make build
-```
-
-Nach erfolgreichem Build liegt die ausführbare Datei unter:
-
-```text
-<BACKEND_DIR>/out/build/pi-arm64-debug/uwbp_server
-```
-
----
-
-## Backend-Artefakt deployen
-
-Es wird nur das fertig gebaute Backend-Artefakt nach `/opt/uwbp/server` kopiert.
-
-```bash
-sudo rm -rf /opt/uwbp/server
-sudo mkdir -p /opt/uwbp/server
-
-sudo cp <BACKEND_DIR>/out/build/pi-arm64-debug/uwbp_server /opt/uwbp/server/uwbp_server
-```
-
----
-
-## Backend-Service-Datei
-
-Im Backend-Repository liegt die systemd-Service-Datei unter:
-
-```text
-<BACKEND_DIR>/deploy/uwbp-server.service
-```
-
-Die Service-Datei verwendet den festen Deployment-Pfad `/opt/uwbp/server`:
-
-```ini
-[Unit]
-Description=UWBP Backend Server
-Wants=NetworkManager.service
-After=dbus.service NetworkManager.service
-
-[Service]
-Type=simple
-WorkingDirectory=/opt/uwbp/server
-ExecStart=/opt/uwbp/server/uwbp_server
-Restart=always
-RestartSec=5
-
-User=root
-
-[Install]
-WantedBy=multi-user.target
-```
-
----
-
-## Backend-Service installieren
-
-```bash
-sudo cp <BACKEND_DIR>/deploy/uwbp-server.service /etc/systemd/system/uwbp-server.service
-sudo systemctl daemon-reload
-sudo systemctl enable uwbp-server.service
-```
-
-Danach wird der Raspberry Pi neu gestartet:
-
-```bash
+sudo make deploy
+sudo make install-service
 sudo reboot
 ```
 
----
-
-## Nach dem Reboot testen
-
-Nach dem Neustart kann geprüft werden, ob der Backend-Service erfolgreich automatisch gestartet wurde:
+Nach dem Neustart prüfen:
 
 ```bash
 systemctl status uwbp-server.service --no-pager
@@ -164,3 +51,48 @@ journalctl -u uwbp-server.service -n 50 --no-pager
 ```
 
 Wenn der Service `active (running)` ist, wurde das Backend erfolgreich gestartet.
+
+---
+
+## Make-Targets
+
+| Target | Beschreibung |
+| --- | --- |
+| `make help` | Zeigt alle verfügbaren Make-Targets an. |
+| `sudo make install-deps` | Installiert die benötigten Systempakete für den Backend-Build. |
+| `make submodules` | Initialisiert und aktualisiert die Git-Submodules, insbesondere `external/vcpkg`. |
+| `make bootstrap-vcpkg` | Bereitet `vcpkg` vor, falls `external/vcpkg/vcpkg` noch nicht vorhanden ist. |
+| `make build` | Baut das Backend für die automatisch erkannte Plattform. |
+| `make configure` | Führt nur den CMake-Configure-Schritt aus. |
+| `make rebuild` | Löscht den aktuellen Build-Ordner und baut das Backend neu. |
+| `make clean` | Löscht den Build-Ordner des aktuellen Presets. |
+| `make wsl` | Baut explizit mit dem WSL-Preset. |
+| `make pi` | Baut explizit mit dem Raspberry-Pi-Preset. |
+| `sudo make deploy` | Kopiert das gebaute Backend-Binary nach `/opt/uwbp/server`. |
+| `sudo make install-service` | Installiert den systemd-Service und aktiviert den Autostart. |
+| `make run` | Baut und startet das Backend lokal mit `sudo`. |
+| `make run-only` | Startet das bereits gebaute Backend lokal mit `sudo`, ohne neu zu bauen. |
+
+---
+
+## systemd-Service
+
+Der Backend-Service wird durch `sudo make install-service` installiert.
+
+Erwarteter Service-Name:
+
+```text
+uwbp-server.service
+```
+
+Status prüfen:
+
+```bash
+systemctl status uwbp-server.service --no-pager
+```
+
+Logs anzeigen:
+
+```bash
+journalctl -u uwbp-server.service -n 50 --no-pager
+```
